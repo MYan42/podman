@@ -206,6 +206,7 @@ type CheckpointOptions struct {
 	TCPEstablished bool
 	PreCheckPoint  bool
 	WithPrevious   bool
+	PreCopy        bool
 	Compression    archive.Compression
 	PrintStats     bool
 	FileLocks      bool
@@ -226,6 +227,7 @@ type RestoreOptions struct {
 	Name            string
 	TCPEstablished  bool
 	ImportPrevious  string
+	ImportPreCopy   bool
 	PublishPorts    []string
 	Pod             string
 	PrintStats      bool

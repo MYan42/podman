@@ -68,6 +68,9 @@ func init() {
 	flags.BoolVarP(&checkpointOptions.PreCheckPoint, "pre-checkpoint", "P", false, "Dump container's memory information only, leave the container running")
 	flags.BoolVar(&checkpointOptions.WithPrevious, "with-previous", false, "Checkpoint container with pre-checkpoint images")
 
+	//OSNET: pre-copy flag
+	flags.BoolVar(&checkpointOptions.PreCopy, "precopy", false, "Enable pre-copy routine")
+
 	createImageFlagName := "create-image"
 	flags.StringVarP(&checkpointOptions.CreateImage, createImageFlagName, "", "", "Create checkpoint image with specified name")
 	_ = checkpointCommand.RegisterFlagCompletionFunc(createImageFlagName, completion.AutocompleteNone)
@@ -120,6 +123,10 @@ func checkpoint(cmd *cobra.Command, args []string) error {
 		return errors.New("--with-previous can not be used with --pre-checkpoint")
 	}
 	if (checkpointOptions.WithPrevious || checkpointOptions.PreCheckPoint) && !criu.MemTrack() {
+		return errors.New("system (architecture/kernel/CRIU) does not support memory tracking")
+	}
+	// OSNET: check criu memory tracking feature avaliablity
+	if (checkpointOptions.PreCopy) && !criu.MemTrack() {
 		return errors.New("system (architecture/kernel/CRIU) does not support memory tracking")
 	}
 	responses, err := registry.ContainerEngine().ContainerCheckpoint(context.Background(), args, checkpointOptions)

@@ -1160,6 +1160,7 @@ func (c *Container) checkpointRestoreSupported(version int) error {
 	return nil
 }
 
+// OSNET: another environment setup before start runc to do checkpoint
 func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointOptions) (*define.CRIUCheckpointRestoreStatistics, int64, error) {
 	if err := c.checkpointRestoreSupported(criu.MinCriuVersion); err != nil {
 		return nil, 0, err
@@ -1177,17 +1178,46 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		return nil, 0, err
 	}
 
-	if err := crutils.CRCreateFileWithLabel(c.bundlePath(), "dump.log", c.MountLabel()); err != nil {
-		return nil, 0, err
-	}
+	//OSNET: send out options to runc
+	if options.PreCopy {
+		var iter int = 0
+		for iter = 0; iter < 5; iter++ { // Todo: add downtime phase trigger, CRIU won't directly report the dirty size
+			var nfsPath string = "/mnt/shared/check"
+			newBundlePath := fmt.Sprintf("%s/%d", nfsPath, iter)
+			if err := crutils.CRCreateFileWithLabel(newBundlePath, "dump.log", c.MountLabel()); err != nil {
+				return nil, 0, err
+			}
+			// Setting CheckpointLog early in case there is a failure.
+			c.state.CheckpointLog = path.Join(newBundlePath, "dump.log")
+			c.state.CheckpointPath = nfsPath
 
-	// Setting CheckpointLog early in case there is a failure.
-	c.state.CheckpointLog = path.Join(c.bundlePath(), "dump.log")
-	c.state.CheckpointPath = c.CheckpointPath()
+			runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, iter)
+			if err != nil {
+				return nil, 0, err
+			}
+			logrus.Debugf("RunTime duration: %d", runtimeCheckpointDuration)
+			// There is a bug from criu: https://github.com/checkpoint-restore/criu/issues/116
+			// We have to change the symbolic link from absolute path to relative path
+			if iter != 0 {
+				os.Remove(path.Join(newBundlePath, "parent"))
+				prevBundlePath := fmt.Sprintf("../%d", (iter - 1))
+				if err := os.Symlink(prevBundlePath, path.Join(newBundlePath, "parent")); err != nil {
+					return nil, 0, err
+				}
+			}
+		}
+	} else {
+		if err := crutils.CRCreateFileWithLabel(c.bundlePath(), "dump.log", c.MountLabel()); err != nil {
+			return nil, 0, err
+		}
+		// Setting CheckpointLog early in case there is a failure.
+		c.state.CheckpointLog = path.Join(c.bundlePath(), "dump.log")
+		c.state.CheckpointPath = c.CheckpointPath()
 
-	runtimeCheckpointDuration, err := c.ociRuntime.CheckpointContainer(c, options)
-	if err != nil {
-		return nil, 0, err
+		runtimeCheckpointDuration, err := c.ociRuntime.CheckpointContainer(c, options)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 
 	// Keep the content of /dev/shm directory
@@ -1231,14 +1261,16 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 			return nil, 0, err
 		}
 	}
-
-	if options.TargetFile != "" {
-		if err := c.exportCheckpoint(options); err != nil {
-			return nil, 0, err
-		}
-	} else {
-		if err := c.createCheckpointImage(ctx, options); err != nil {
-			return nil, 0, err
+	// OSNET: ignore exporting as a tar file, reduce extra copy
+	if !options.PreCopy {
+		if options.TargetFile != "" {
+			if err := c.exportCheckpoint(options); err != nil {
+				return nil, 0, err
+			}
+		} else {
+			if err := c.createCheckpointImage(ctx, options); err != nil {
+				return nil, 0, err
+			}
 		}
 	}
 
@@ -1257,31 +1289,37 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		}
 	}
 
-	criuStatistics, err := func() (*define.CRIUCheckpointRestoreStatistics, error) {
-		if !options.PrintStats {
-			return nil, nil
-		}
-		statsDirectory, err := os.Open(c.bundlePath())
-		if err != nil {
-			return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
-		}
+	// OSNET: return empty statistics report back to main thread
+	if !options.PreCopy {
+		criuStatistics, err := func() (*define.CRIUCheckpointRestoreStatistics, error) {
+			if !options.PrintStats {
+				return nil, nil
+			}
+			statsDirectory, err := os.Open(c.bundlePath())
+			if err != nil {
+				return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
+			}
 
-		dumpStatistics, err := stats.CriuGetDumpStats(statsDirectory)
-		if err != nil {
-			return nil, fmt.Errorf("displaying checkpointing statistics not possible: %w", err)
-		}
+			dumpStatistics, err := stats.CriuGetDumpStats(statsDirectory)
+			if err != nil {
+				return nil, fmt.Errorf("displaying checkpointing statistics not possible: %w", err)
+			}
 
-		return &define.CRIUCheckpointRestoreStatistics{
-			FreezingTime: dumpStatistics.GetFreezingTime(),
-			FrozenTime:   dumpStatistics.GetFrozenTime(),
-			MemdumpTime:  dumpStatistics.GetMemdumpTime(),
-			MemwriteTime: dumpStatistics.GetMemwriteTime(),
-			PagesScanned: dumpStatistics.GetPagesScanned(),
-			PagesWritten: dumpStatistics.GetPagesWritten(),
-		}, nil
-	}()
-	if err != nil {
-		return nil, 0, err
+			return &define.CRIUCheckpointRestoreStatistics{
+				FreezingTime: dumpStatistics.GetFreezingTime(),
+				FrozenTime:   dumpStatistics.GetFrozenTime(),
+				MemdumpTime:  dumpStatistics.GetMemdumpTime(),
+				MemwriteTime: dumpStatistics.GetMemwriteTime(),
+				PagesScanned: dumpStatistics.GetPagesScanned(),
+				PagesWritten: dumpStatistics.GetPagesWritten(),
+			}, nil
+		}()
+		if err != nil {
+			return nil, 0, err
+		}
+	} else {
+		criuStatistics := nil
+		runtimeCheckpointDuration = 0
 	}
 
 	if !options.Keep && !options.PreCheckPoint {

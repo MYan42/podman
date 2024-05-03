@@ -1020,6 +1020,10 @@ type ContainerCheckpointOptions struct {
 	// FileLocks tells the API to checkpoint/restore a container
 	// with file-locks
 	FileLocks bool
+	// OSNET: PreCopy routine flag
+	PreCopy bool
+	// OSNET: PreCopy restore routine flag
+	ImportPreCopy bool
 }
 
 // Checkpoint checkpoints a container

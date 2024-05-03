@@ -807,6 +807,82 @@ func (r *ConmonOCIRuntime) AttachResize(ctr *Container, newSize resize.TerminalS
 	return nil
 }
 
+func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, iter int) (int64, error) {
+	// imagePath is used by CRIU to store the actual checkpoint files
+	imagePath := ctr.CheckpointPath()
+	if options.PreCopy {
+		workPath := imagePath
+	} else {
+		// workPath will be used to store dump.log and stats-dump
+		workPath := ctr.bundlePath()
+	}
+
+	logrus.Debugf("PreCopy %t", options.PreCopy)
+	logrus.Debugf("Iteration %d", iter)
+	logrus.Debugf("Writing checkpoint and logs to %s", workPath)
+	args := []string{}
+
+	// 1st iteration command: /usr/sbin/runc checkpoint --image-path /../checkpoint/0/ --work-path /../logs/0/ --tcp-established --pre-dump <container-id>
+	// Following iteration command: /usr/sbin/runc checkpoint --image-path /../checkpoint/<i>/ --work-path /../logs/<i>/ --tcp-established --pre-dump --parent-path ../<i-1> <container-id>
+	// Last iteration(downtime) command: /usr/sbin/runc checkpoint --image-path /../checkpoint/<i>/ --work-path /../logs/<i>/ --tcp-established --parent-path ../<i-1> <container-id>
+
+	args = append(args, r.runtimeFlags...)
+	args = append(args, "checkpoint")
+	args = append(args, "--image-path")
+	args = append(args, imagePath)
+	args = append(args, "--work-path")
+	args = append(args, workPath)
+	if options.KeepRunning {
+		args = append(args, "--leave-running")
+	}
+	if options.TCPEstablished {
+		args = append(args, "--tcp-established")
+	}
+	if options.FileLocks {
+		args = append(args, "--file-locks")
+	}
+	if !options.PreCheckPoint && options.KeepRunning {
+		args = append(args, "--leave-running")
+	}
+	if options.PreCheckPoint {
+		args = append(args, "--pre-dump")
+	}
+	if !options.PreCheckPoint && options.WithPrevious {
+		args = append(
+			args,
+			"--parent-path",
+			filepath.Join("..", preCheckpointDir),
+		)
+	}
+
+	args = append(args, ctr.ID())
+	logrus.Debugf("the args to checkpoint: %s %s", r.path, strings.Join(args, " "))
+
+	runtimeDir, err := util.GetRootlessRuntimeDir()
+	if err != nil {
+		return 0, err
+	}
+	env := []string{fmt.Sprintf("XDG_RUNTIME_DIR=%s", runtimeDir)}
+	if path, ok := os.LookupEnv("PATH"); ok {
+		env = append(env, fmt.Sprintf("PATH=%s", path))
+	}
+
+	var runtimeCheckpointStarted time.Time
+	err = r.withContainerSocketLabel(ctr, func() error {
+		runtimeCheckpointStarted = time.Now()
+		return utils.ExecCmdWithStdStreams(os.Stdin, os.Stdout, os.Stderr, env, r.path, args...)
+	})
+
+	runtimeCheckpointDuration := func() int64 {
+		if options.PrintStats {
+			return time.Since(runtimeCheckpointStarted).Microseconds()
+		}
+		return 0
+	}()
+
+	return runtimeCheckpointDuration, err
+}
+
 // CheckpointContainer checkpoints the given container.
 func (r *ConmonOCIRuntime) CheckpointContainer(ctr *Container, options ContainerCheckpointOptions) (int64, error) {
 	// imagePath is used by CRIU to store the actual checkpoint files

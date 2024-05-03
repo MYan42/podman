@@ -113,6 +113,9 @@ type OCIRuntime interface { //nolint:interfacebloat
 	// the given container.
 	CheckpointContainer(ctr *Container, options ContainerCheckpointOptions) (int64, error)
 
+	// OSNET: Pre-copy routine
+	PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, iter int) (int64, error)
+
 	// CheckConmonRunning verifies that the given container's Conmon
 	// instance is still running. Runtimes without Conmon, or systems where
 	// the PID of conmon is not available, should mock this as True.

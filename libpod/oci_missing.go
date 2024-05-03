@@ -173,6 +173,11 @@ func (r *MissingRuntime) CheckpointContainer(ctr *Container, options ContainerCh
 	return 0, r.printError()
 }
 
+// PreCopyCheckpointContainer is not available as the runtime is missing
+func (r *MissingRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, iter int) (int64, error) {
+	return 0, r.printError()
+}
+
 // CheckConmonRunning is not available as the runtime is missing
 func (r *MissingRuntime) CheckConmonRunning(ctr *Container) (bool, error) {
 	return false, r.printError()
