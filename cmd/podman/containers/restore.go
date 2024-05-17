@@ -67,9 +67,7 @@ func init() {
 	_ = restoreCommand.RegisterFlagCompletionFunc(importPreviousFlagName, completion.AutocompleteDefault)
 
 	//OSNET: Pre-copy restore flag
-	importPreCopyFlagName := "import-previous"
-	flags.StringVar(&restoreOptions.ImportPreCopy, importPreCopyFlagName, "", "Enable pre-copy restore routine")
-	_ = restoreCommand.RegisterFlagCompletionFunc(importPreviousFlagName, completion.AutocompleteDefault)
+	flags.BoolVar(&restoreOptions.ImportPreCopy, "import-pre-copy", false, "Enbale pre copy routine flag")
 
 	flags.BoolVar(&restoreOptions.IgnoreRootFS, "ignore-rootfs", false, "Do not apply root file-system changes when importing from exported checkpoint")
 	flags.BoolVar(&restoreOptions.IgnoreStaticIP, "ignore-static-ip", false, "Ignore IP address set via --static-ip")

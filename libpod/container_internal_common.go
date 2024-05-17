@@ -1215,6 +1215,7 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		c.state.CheckpointPath = c.CheckpointPath()
 
 		runtimeCheckpointDuration, err := c.ociRuntime.CheckpointContainer(c, options)
+		logrus.Debugf("RunTime duration: %d", runtimeCheckpointDuration)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -1290,36 +1291,35 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	}
 
 	// OSNET: return empty statistics report back to main thread
-	if !options.PreCopy {
-		criuStatistics, err := func() (*define.CRIUCheckpointRestoreStatistics, error) {
-			if !options.PrintStats {
-				return nil, nil
-			}
-			statsDirectory, err := os.Open(c.bundlePath())
-			if err != nil {
-				return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
-			}
-
-			dumpStatistics, err := stats.CriuGetDumpStats(statsDirectory)
-			if err != nil {
-				return nil, fmt.Errorf("displaying checkpointing statistics not possible: %w", err)
-			}
-
-			return &define.CRIUCheckpointRestoreStatistics{
-				FreezingTime: dumpStatistics.GetFreezingTime(),
-				FrozenTime:   dumpStatistics.GetFrozenTime(),
-				MemdumpTime:  dumpStatistics.GetMemdumpTime(),
-				MemwriteTime: dumpStatistics.GetMemwriteTime(),
-				PagesScanned: dumpStatistics.GetPagesScanned(),
-				PagesWritten: dumpStatistics.GetPagesWritten(),
-			}, nil
-		}()
-		if err != nil {
-			return nil, 0, err
+	var runtimeCheckpointDuration int64 = 0
+	criuStatistics, err := func() (*define.CRIUCheckpointRestoreStatistics, error) {
+		if !options.PrintStats {
+			return nil, nil
 		}
-	} else {
-		criuStatistics := nil
-		runtimeCheckpointDuration = 0
+		if options.PreCopy {
+			return nil, nil
+		}
+		statsDirectory, err := os.Open(c.bundlePath())
+		if err != nil {
+			return nil, fmt.Errorf("not able to open %q: %w", c.bundlePath(), err)
+		}
+
+		dumpStatistics, err := stats.CriuGetDumpStats(statsDirectory)
+		if err != nil {
+			return nil, fmt.Errorf("displaying checkpointing statistics not possible: %w", err)
+		}
+
+		return &define.CRIUCheckpointRestoreStatistics{
+			FreezingTime: dumpStatistics.GetFreezingTime(),
+			FrozenTime:   dumpStatistics.GetFrozenTime(),
+			MemdumpTime:  dumpStatistics.GetMemdumpTime(),
+			MemwriteTime: dumpStatistics.GetMemwriteTime(),
+			PagesScanned: dumpStatistics.GetPagesScanned(),
+			PagesWritten: dumpStatistics.GetPagesWritten(),
+		}, nil
+	}()
+	if err != nil {
+		return nil, 0, err
 	}
 
 	if !options.Keep && !options.PreCheckPoint {
