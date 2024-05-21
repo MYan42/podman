@@ -174,7 +174,7 @@ func (r *MissingRuntime) CheckpointContainer(ctr *Container, options ContainerCh
 }
 
 // PreCopyCheckpointContainer is not available as the runtime is missing
-func (r *MissingRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, iter int) (int64, error) {
+func (r *MissingRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, newBundlePath string, iter int) (int64, error) {
 	return 0, r.printError()
 }
 

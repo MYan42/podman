@@ -807,11 +807,12 @@ func (r *ConmonOCIRuntime) AttachResize(ctr *Container, newSize resize.TerminalS
 	return nil
 }
 
-func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, iter int) (int64, error) {
+func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, newCheckpointPath string, iter int) (int64, error) {
 	// imagePath is used by CRIU to store the actual checkpoint files
 	imagePath := ctr.CheckpointPath()
 	workPath := ""
 	if options.PreCopy {
+		imagePath = newCheckpointPath
 		workPath = imagePath
 	} else {
 		// workPath will be used to store dump.log and stats-dump

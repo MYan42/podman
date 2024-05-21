@@ -1184,14 +1184,29 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 		for iter = 0; iter < 5; iter++ { // Todo: add downtime phase trigger, CRIU won't directly report the dirty size
 			var nfsPath string = "/mnt/shared/check"
 			newBundlePath := fmt.Sprintf("%s/%d", nfsPath, iter)
+			logrus.Debugf("newBundlePath: %d", newBundlePath)
+			// Check if the directory exists
+			if _, err := os.Stat(newBundlePath); os.IsNotExist(err) {
+				// Directory does not exist, create it
+				err := os.MkdirAll(newBundlePath, os.ModePerm)
+				if err != nil {
+					logrus.Errorf("Error creating directory: %v", err)
+					return nil, 0, err
+				}
+				logrus.Debugf("Directory created: %s", newBundlePath)
+			} else if err != nil {
+				// An error other than non-existence occurred
+				logrus.Errorf("Error checking directory: %v", err)
+				return nil, 0, err
+			}
 			if err := crutils.CRCreateFileWithLabel(newBundlePath, "dump.log", c.MountLabel()); err != nil {
 				return nil, 0, err
 			}
 			// Setting CheckpointLog early in case there is a failure.
 			c.state.CheckpointLog = path.Join(newBundlePath, "dump.log")
-			c.state.CheckpointPath = nfsPath
-
-			runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, iter)
+			c.state.CheckpointPath = newBundlePath
+			// Checkpointing
+			runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, newBundlePath, iter)
 			if err != nil {
 				return nil, 0, err
 			}
