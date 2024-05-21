@@ -807,13 +807,13 @@ func (r *ConmonOCIRuntime) AttachResize(ctr *Container, newSize resize.TerminalS
 	return nil
 }
 
-func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, newCheckpointPath string, iter int) (int64, error) {
+func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options ContainerCheckpointOptions, workingPath string, iter int) (int64, error) {
 	// imagePath is used by CRIU to store the actual checkpoint files
 	imagePath := ctr.CheckpointPath()
 	workPath := ""
 	if options.PreCopy {
-		imagePath = newCheckpointPath
-		workPath = imagePath
+		workPath = workingPath
+		imagePath = workPath
 	} else {
 		// workPath will be used to store dump.log and stats-dump
 		workPath = ctr.bundlePath()
@@ -834,6 +834,19 @@ func (r *ConmonOCIRuntime) PreCopyCheckpointContainer(ctr *Container, options Co
 	args = append(args, imagePath)
 	args = append(args, "--work-path")
 	args = append(args, workPath)
+
+	if options.PreCopy {
+		if iter != 0 { // Following iterations
+			parentPath := fmt.Sprintf("../%d", (iter - 1))
+			args = append(args, "--parent-path")
+			args = append(args, parentPath)
+		}
+		if iter < 5 { // Last iteration will stop the container ToDo: add down time trigger
+			args = append(args, "--pre-dump")
+			args = append(args, "--leave-running")
+		}
+	}
+
 	if options.KeepRunning {
 		args = append(args, "--leave-running")
 	}

@@ -1181,10 +1181,9 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 	//OSNET: send out options to runc
 	if options.PreCopy {
 		var iter int = 0
+		var nfsPath string = "/mnt/shared/check"
 		for iter = 0; iter < 5; iter++ { // Todo: add downtime phase trigger, CRIU won't directly report the dirty size
-			var nfsPath string = "/mnt/shared/check"
 			newBundlePath := fmt.Sprintf("%s/%d", nfsPath, iter)
-			logrus.Debugf("newBundlePath: %d", newBundlePath)
 			// Check if the directory exists
 			if _, err := os.Stat(newBundlePath); os.IsNotExist(err) {
 				// Directory does not exist, create it
@@ -1193,7 +1192,7 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 					logrus.Errorf("Error creating directory: %v", err)
 					return nil, 0, err
 				}
-				logrus.Debugf("Directory created: %s", newBundlePath)
+				logrus.Debugf("CRIU work directory created: %s", newBundlePath)
 			} else if err != nil {
 				// An error other than non-existence occurred
 				logrus.Errorf("Error checking directory: %v", err)
@@ -1219,6 +1218,22 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 				if err := os.Symlink(prevBundlePath, path.Join(newBundlePath, "parent")); err != nil {
 					return nil, 0, err
 				}
+			}
+		}
+		// Downtime ToDo: add downtime trigger
+		newBundlePath := fmt.Sprintf("%s/5", nfsPath)
+		runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, newBundlePath, 5)
+		if err != nil {
+			return nil, 0, err
+		}
+		logrus.Debugf("RunTime duration: %d", runtimeCheckpointDuration)
+		// There is a bug from criu: https://github.com/checkpoint-restore/criu/issues/116
+		// We have to change the symbolic link from absolute path to relative path
+		if iter != 0 {
+			os.Remove(path.Join(newBundlePath, "parent"))
+			prevBundlePath := fmt.Sprintf("../%d", (iter - 1))
+			if err := os.Symlink(prevBundlePath, path.Join(newBundlePath, "parent")); err != nil {
+				return nil, 0, err
 			}
 		}
 	} else {
