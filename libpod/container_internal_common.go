@@ -1205,6 +1205,10 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 			c.state.CheckpointLog = path.Join(newBundlePath, "dump.log")
 			c.state.CheckpointPath = newBundlePath
 			// Checkpointing
+			if iter == 2 {
+				//OSNET: remove me after checking the correctness
+				time.Sleep(20 * time.Second)
+			}
 			runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, newBundlePath, iter)
 			if err != nil {
 				return nil, 0, err
@@ -1220,15 +1224,14 @@ func (c *Container) checkpoint(ctx context.Context, options ContainerCheckpointO
 				}
 			}
 		}
-		// Downtime ToDo: add downtime trigger
-		newBundlePath := fmt.Sprintf("%s/5", nfsPath)
+		// OSNET: ToDo: add downtime trigger
+		time.Sleep(20 * time.Second) //OSNET: remove me after checking the correctness
+		newBundlePath := fmt.Sprintf("%s/checkpoint", nfsPath)
 		runtimeCheckpointDuration, err := c.ociRuntime.PreCopyCheckpointContainer(c, options, newBundlePath, 5)
 		if err != nil {
 			return nil, 0, err
 		}
 		logrus.Debugf("RunTime duration: %d", runtimeCheckpointDuration)
-		// There is a bug from criu: https://github.com/checkpoint-restore/criu/issues/116
-		// We have to change the symbolic link from absolute path to relative path
 		if iter != 0 {
 			os.Remove(path.Join(newBundlePath, "parent"))
 			prevBundlePath := fmt.Sprintf("../%d", (iter - 1))
@@ -1764,6 +1767,7 @@ func (c *Container) restore(ctx context.Context, options ContainerCheckpointOpti
 		}
 	}
 
+	//OSNET: Just before restoring happened.
 	runtimeRestoreDuration, err = c.ociRuntime.CreateContainer(c, &options)
 	if err != nil {
 		return nil, 0, err
